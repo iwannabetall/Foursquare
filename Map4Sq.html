@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html>
+  <head>
+<link href='https://fonts.googleapis.com/css?family=Titillium+Web' rel='stylesheet' type='text/css'>
+
+    <title>Where was I?</title>
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no">
+    <meta charset="utf-8">
+    <style>
+      html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+     #all_content { position: relative; } /* Step 2: Add key/wrapper */
+     #map-canvas {
+      height: 100%;
+      width: 80%;
+    }
+    #map_canvas img {
+      max-width: none; 
+    }
+    #pac-input {  /*search box*/
+      position: absolute;
+      background-color: #fff;
+      font-family: Roboto;
+      font-size: 15px;
+      font-weight: 300;
+      margin-left: 12px;
+      top: 10%;
+      padding: 0 11px 0 13px;
+      text-overflow: ellipsis;
+      width: 300px;
+    }
+
+    #pac-input:focus {
+      border-color: #4d90fe;
+    }
+
+    .pac-container {
+      font-family: 'Titillium Web', sans-serif;
+    }
+  
+    #side_bar{
+      position: absolute;
+      top: 10%;
+      bottom: 10%;
+      max-width:10%;
+      overflow-y:scroll;
+      z-index: 5;
+      font-family: 'Titillium Web', sans-serif;
+      background-color: #fff;
+      padding: 5px;
+      border: 1px solid #999;
+      text-align: center;
+      line-height: 30px;
+      padding-left: 10px;
+    }
+     #cuisinefilter { /* Step 2: Add key/wrapper */
+      position: absolute; top: 25%; right: 0; width: 15%; height: 45%;      
+      overflow:scroll;
+      background-color: #FFFFFF; 
+      font-family: 'Titillium Web', sans-serif;
+
+    }
+
+    #filter_buttons{
+      display:block;
+    }
+    
+    #rating_filter { /* Step 2: Add key/wrapper */
+      position: absolute; top: 0; right: 0; width: 15%; height: 22%;
+      overflow:scroll;
+      background-color: #FFFFFF; 
+      font-family: 'Titillium Web', sans-serif;
+      /*border: 1px solid #999;*/
+    }
+    #city_filter{
+      position: absolute; top: 67%; right: 0; width: 15%; height: 33%; bottom: 33%;
+      overflow-y:scroll;
+      z-index: 5;
+      font-family: 'Titillium Web', sans-serif;
+      background-color: #fff;
+      /*border: 1px solid #999; */
+      line-height: 30px;
+    }
+
+    </style>
+    <script type="text/javascript" charset="utf-8" src="http://cdn.jsdelivr.net/alasql/0.2/alasql.min.js"></script> 
+<script type="text/javascript" charset="utf-8" src="https://ajax.googleapis.com/ajax/libs/jquery/1.9.0/jquery.min.js"></script>
+<script type="text/javascript" charset="utf-8" type="text/javascript" src="PATH_TO_PLUGIN/jquery.ui.map.js"></script>
+<script type="text/javascript" charset="utf-8" type="text/javascript">
+//mobile compatibility -- check if non ipad, reroute to open in google maps 
+        //if (screen.width <= 720) {
+        //window.location = "googlemaps://www.google.com/maps/d/edit?mid=zXgU8uMwOwFA.kuVqxNbjjch0&usp=sharing";
+    //}
+</script>
+    <script>
+
+//finds unique values of an array 
+    Array.prototype.contains = function(v) {
+      for(var i = 0; i < this.length; i++) {
+        if(this[i] === v) return true;
+          }
+          return false;
+        };
+
+    Array.prototype.unique = function() {
+      var arr = [];
+        for(var i = 0; i < this.length; i++) {
+          if(!arr.contains(this[i])) {
+            arr.push(this[i]);
+          }
+        }
+        return arr; 
+      }
+  
+  // variable to hold current active InfoWindow
+    var activeInfoWindow;  
+    var infowindow;
+    var cuisineslist;   //full list of cuisines
+    var cuisines;  // unique list
+    var ratings;  // unique range 
+    //ratings = ['0-2', '3-4', '5-7','8+']
+    //ratings = ['Hate it', 'Almost hate it', 'Liked it','Love it']
+    //ratings = ['Love it','Like it', 'Meh', 'Hate it']
+    ratings = [2012, 2013, 2014, 2015, 2016]
+    var ratingslist;  // full list
+    var markerarray; 
+    var restaurantlist;  //full list of restaurants
+
+    var checked_cities = []; //get list of which checkboxes have been checked
+    var checked_cuisines = [];
+
+
+    //var counter = 0;
+    var map;
+    var side_bar_html = "";  // this variable will collect the html which will eventually be placed in the side_bar 
+    
+function initialize() {
+  var marker;
+  //https://cdn.rawgit.com/iwannabetall/FoodMap/master/ReviewsApril2016.csv
+  
+  //alasql('SELECT * FROM CSV("ReviewsApril2016.csv",{headers:true}) 
+  alasql('SELECT * FROM CSV("https://rawgit.com/iwannabetall/Foursquare/master/FOURSQUARE_DATA_With_Local_TimesAndCity.csv",{headers:true}) ', [], function(restaurant){
+    var mapOptions = { zoom : 3, center : new google.maps.LatLng(40.744915, -73.989885),
+      mapTypeId : google.maps.MapTypeId.ROADMAP
+    };
+    map = new google.maps.Map(document.getElementById('map-canvas'), mapOptions);
+
+    markerarray = [];
+    cuisineslist = [];
+    Locationslist = [];
+    restaurantlist = [];
+    ratingslist = [];
+    for (i = 0; i < restaurant.length; i++) {
+
+       switch(true){
+          case (restaurant[i].PlaceType == "Pool"):
+            iconname = "https://cdn.rawgit.com/iwannabetall/Foursquare/master/swimming2.png"; 
+            break;  
+          case (restaurant[i].PlaceType == "Work"):
+            iconcolor = 'yellow';
+            iconname = "http://maps.google.com/mapfiles/ms/icons/" + iconcolor + ".png"; 
+            break;  
+          case (restaurant[i].PlaceType == "Probly Food"):
+            iconcolor = 'green';
+            iconname = "http://maps.google.com/mapfiles/ms/icons/" + iconcolor + ".png"; 
+            break;
+          case (restaurant[i].PlaceType == "Airport"):            
+            iconname = "https://cdn.rawgit.com/iwannabetall/Foursquare/master/airport.png"; 
+            break; 
+          case (restaurant[i].PlaceType == "Gym"):
+            iconname = "https://cdn.rawgit.com/iwannabetall/Foursquare/master/bballct.png"  
+            break;  
+          }
+        
+        //icon : new google.maps.MarkerImage(iconname)
+        //characteristics of markers 
+        var opts = {
+          map : map,
+          icon: iconname,
+          myname: restaurant[i].Place,
+          labelAnchor: new google.maps.Point(30,0),
+          rating: restaurant[i].Year,
+          foodtype: restaurant[i].PlaceType,
+          ratingrange:restaurant[i].Year,          
+          labelClass: "labels",
+          city: restaurant[i].Region,
+          position : new google.maps.LatLng(restaurant[i].Latitude,restaurant[i].Longitude)
+        };
+
+//MarkerWithLabel
+        //marker = new MarkerWithLabel(opts);
+
+        marker = new google.maps.Marker(opts);
+
+        markerarray.push(marker);
+  
+    //contents of info box 
+      var contentString0 = '<div id="content">'+
+        '<h1 id="firstHeading" class="firstHeading">'+restaurant[i].Place+'</h1>'+
+        '<div id="bodyContent">'+
+        '<p> Year: ' + restaurant[i].Year + '</p>' + 
+        '<p> Comments: ' + restaurant[i].Description + '</p>';
+
+        if (restaurant[i].Link == 0){
+          var webcontent = '<p>Website: not available </p>';
+        }
+        else {
+          webcontent = '<p>Foursquare: <a href='+ restaurant[i].Link +' onclick="window.open(this.href); return false;" onkeypress="window.open(this.href); return false;>"</a>'+ restaurant[i].Place + '</p>';
+        }        
+
+        var contentString = contentString0 + webcontent;
+
+        //opens restaurant website in new tab
+
+        attachSecretMessage(marker, contentString);        
+        ratingslist.push(restaurant[i].Year);
+        cuisineslist.push(restaurant[i].PlaceType);  //array of cuisines 
+        Locationslist.push(restaurant[i].Region);  //array of locations
+        restaurantlist.push(restaurant[i].Place);  //array of restaurants
+      }   //end of for loop
+
+//alert(markerarray.length);
+
+      cuisines = cuisineslist.unique();      
+      cuisines.sort();  //put in alphabetical order
+
+      cities = Locationslist.unique(); 
+      cities.sort(); // alphabetical order of unique list of cities
+        //overlay transit map 
+        var transitLayer = new google.maps.TransitLayer();
+        transitLayer.setMap(map);    
+
+
+ // Create the search box and link it to the UI element.
+  var input = document.getElementById('pac-input');
+  var searchBox = new google.maps.places.SearchBox(input);
+  map.controls[google.maps.ControlPosition.TOP_LEFT].push(input);
+
+  // Bias the SearchBox results towards current map's viewport.
+  map.addListener('bounds_changed', function() {
+    searchBox.setBounds(map.getBounds());
+  });
+ var markers = [];
+  // [START region_getplaces]
+  // Listen for the event fired when the user selects a prediction and retrieve
+  // more details for that place.
+  searchBox.addListener('places_changed', function() {
+    var places = searchBox.getPlaces();
+
+    if (places.length == 0) {
+      return;
+    }
+
+    // Clear out the old markers.
+    markers.forEach(function(marker) {
+      marker.setMap(null);
+    });
+    markers = [];
+
+    // For each place, get the icon, name and location.
+    var bounds = new google.maps.LatLngBounds();
+    places.forEach(function(place) {
+      var icon = {
+        url: place.icon,
+        size: new google.maps.Size(71, 71),
+        origin: new google.maps.Point(0, 0),
+        anchor: new google.maps.Point(17, 34),
+        scaledSize: new google.maps.Size(25, 25)
+      };
+
+      // Create a marker for each place.
+      markers.push(new google.maps.Marker({
+        map: map,
+        icon: icon,
+        title: place.name,
+        position: place.geometry.location
+      }));
+
+      if (place.geometry.viewport) {
+        // Only geocodes have viewport.
+        bounds.union(place.geometry.viewport);
+      } else {
+        bounds.extend(place.geometry.location);
+      }
+    });
+    map.fitBounds(bounds);
+  });  //end search box code
+
+      });
+
+}  //end of initialize function
+
+var checkedcity;
+var checkedcuisines;
+var checkedratings;
+
+function get_checked_boxes(){
+  //populates two arrays, checked_cities and checked_cuisines with what's been selected--unique lists
+  checked_cities = []; // clear checked history
+  checked_cuisines = [];
+  checked_ratings =[];
+
+  for (var i=0; i < cities.length; i++) {
+  checkedcity = document.getElementById(cities[i]);  //list of HTMLInputEle 
+    if (checkedcity.checked == true){
+    checked_cities.push(checkedcity.value);
+    }
+  }
+  for (var i=0; i < cuisines.length; i++) {
+    checkedcuisines = document.getElementById(cuisines[i]);  //list of HTMLInputEle 
+    if (checkedcuisines.checked == true){
+    checked_cuisines.push(checkedcuisines.value);
+    }
+  }
+  for (var i=0; i < ratings.length; i++) {
+    checkedratings = document.getElementById(ratings[i]);  //list of HTMLInputEle 
+    if (checkedratings.checked == true){
+    checked_ratings.push(checkedratings.value);
+    }
+  }
+return [checked_cities, checked_cuisines, checked_ratings];
+}
+
+    //google.maps.event.addDomListener(window, 'load', initialize);
+// == shows all markers of a particular category, and ensures the checkbox is checked ==
+function show(checked_cities, checked_cuisines, checked_ratings) {
+    document.getElementById("side_bar").style.display = 'block'; 
+  var visible;
+
+  //if select only a cuisine (no city), show all of that cuisine
+  if (checked_cities.length == 0){
+    if(checked_ratings.length == 0){
+      for (var j=0; j<checked_cuisines.length; j++) {
+        for (var i=0; i<markerarray.length; i++) {
+          if (markerarray[i].foodtype == checked_cuisines[j])
+          {
+            markerarray[i].setVisible(true);
+            visible = i;
+            //check all cities where food is located
+            document.getElementById(markerarray[i].city).checked = true; 
+            document.getElementById(markerarray[i].ratingrange).checked = true; 
+          //make markers of selected category bounce for 2.5 seconds
+           // markerarray[i].setAnimation(google.maps.Animation.BOUNCE);
+            //stopAnimation(markerarray[i]);    
+        }
+      }
+    }  
+  }
+  //checked only a cuisine and a rating (and no city)
+    if(checked_ratings.length > 0){
+      for (var j=0; j<checked_cuisines.length; j++) {
+        for (var k=0; k<checked_ratings.length; k++) {
+          for (var i=0; i<markerarray.length; i++) {
+            if (markerarray[i].foodtype == checked_cuisines[j] && markerarray[i].ratingrange == checked_ratings[k])
+            {
+              markerarray[i].setVisible(true);
+              visible = i;
+              //check all cities where food is located
+              document.getElementById(markerarray[i].city).checked = true; 
+            //make markers of selected category bounce for 2.5 seconds
+             // markerarray[i].setAnimation(google.maps.Animation.BOUNCE);
+              //stopAnimation(markerarray[i]);    
+          }
+        }
+      }  
+    }
+    ///didn't check city or cuisine, rating only 
+   if(checked_cuisines.length == 0){
+      for (var j=0; j<checked_ratings.length; j++) {
+        for (var i=0; i<markerarray.length; i++) {
+          if (markerarray[i].ratingrange == checked_ratings[j])
+          {
+            markerarray[i].setVisible(true);
+            visible = i;
+            //check all cities where food is located
+            document.getElementById(markerarray[i].city).checked = true; 
+            document.getElementById(markerarray[i].foodtype).checked = true; 
+          //make markers of selected category bounce for 2.5 seconds
+           // markerarray[i].setAnimation(google.maps.Animation.BOUNCE);
+            //stopAnimation(markerarray[i]);    
+          }
+        }
+      }  
+    }
+  }
+    
+    if (checked_cuisines.length == 1){
+      map.panTo(markerarray[visible].getPosition());
+      //map.setCenter(markerarray[visible].getPosition());
+      map.setZoom(4);
+  }
+}
+  //if select a city only and no ratings, show everything in that city 
+  if (checked_cuisines.length == 0)
+  {
+    if (checked_ratings.length == 0){
+      for (var j=0; j<checked_cities.length; j++) {
+        for (var i=0; i<markerarray.length; i++) {
+          if (markerarray[i].city == checked_cities[j]){
+            markerarray[i].setVisible(true);
+            visible = i;
+            //check cuisine type of everything in selected city
+            document.getElementById(markerarray[i].foodtype).checked = true; 
+            document.getElementById(markerarray[i].ratingrange).checked = true; 
+          //make markers of selected category bounce for 2.5 seconds
+          //markerarray[i].setAnimation(google.maps.Animation.BOUNCE);
+          //stopAnimation(markerarray[i]);   
+            }
+          }
+        }
+        //no ratings checked
+    if (checked_cities.length == 1){
+      map.panTo(markerarray[visible].getPosition());
+      map.setZoom(12);
+      //map.setCenter(markerarray[visible].getPosition());
+    }
+  }
+  //if select a rating and no cuisine, show all for that rating 
+    if (checked_ratings.length > 0)
+    {
+      for (var j=0; j<checked_cities.length; j++) {
+        for (var k=0; k<checked_ratings.length; k++){
+          for (var i=0; i<markerarray.length; i++) {            
+            if (markerarray[i].city == checked_cities[j] && markerarray[i].ratingrange == checked_ratings[k]){
+                markerarray[i].setVisible(true);
+                visible = i;
+                //check cuisine type of everything in selected city
+                document.getElementById(markerarray[i].foodtype).checked = true; 
+                document.getElementById(markerarray[i].ratingrange).checked = true; 
+          //make markers of selected category bounce for 2.5 seconds
+            //markerarray[i].setAnimation(google.maps.Animation.BOUNCE);
+            //stopAnimation(markerarray[i]);   
+        }
+      }
+    }
+  }
+        if (checked_cities.length == 1){
+      map.panTo(markerarray[visible].getPosition());
+      map.setZoom(12);
+      //map.setCenter(markerarray[visible].getPosition());
+    }
+  }  
+}
+//if select no ratings, but selected city and cuisine
+if(checked_ratings.length == 0){
+  for (var i=0; i<markerarray.length; i++) {
+    for (var j=0; j<checked_cuisines.length; j++) {
+      for (var k=0; k< checked_cities.length; k++) { 
+        if (markerarray[i].foodtype == checked_cuisines[j] && (markerarray[i].city == checked_cities[k])){
+          markerarray[i].setVisible(true);
+          visible = i;
+        //check all ratings for food
+        //document.getElementById(markerarray[i].city).checked = true; 
+        document.getElementById(markerarray[i].ratingrange).checked = true; 
+      //make markers of selected category bounce for 2.5 seconds
+       // markerarray[i].setAnimation(google.maps.Animation.BOUNCE);
+        //stopAnimation(markerarray[i]);    
+            }
+          }
+        }  
+      }
+    }
+
+
+//if select some combination of any 2 or 3
+var actually_checked_cuisines_of_visible_markers = [];
+  if (checked_cities.length > 0){
+    for (var i=0; i<markerarray.length; i++) {
+      for (var j=0; j<checked_cuisines.length; j++) 
+      {
+        for (var k=0; k< checked_cities.length; k++)
+        { 
+          for (var h=0; h< checked_ratings.length; h++)//wtf this for loop help
+          { 
+             //check only the cuisines found in the selected cities
+          //find matching cuisines and cities
+          if (markerarray[i].foodtype == checked_cuisines[j] && (markerarray[i].city == checked_cities[k]) && (markerarray[i].ratingrange == checked_ratings[h]))
+          {
+            markerarray[i].setVisible(true);
+            //document.getElementById(markerarray[i].foodtype).checked = true; 
+            
+            //actually_checked_cuisines_of_visible_markers.push(markerarray[i].foodtype); 
+        //make markers of just selected category bounce for 2.5 seconds
+          //if (markerarray[i].foodtype == category)
+          // if (markerarray[i].Rating == 10)
+          //   {
+          //   markerarray[i].setAnimation(google.maps.Animation.BOUNCE);
+          //   stopAnimation(markerarray[i]);      
+          // }
+          }
+        }
+      }
+        //!!!!!  need to deal with unchecking cuisines of city once unchecked 
+        //if actua //if checked cuisine isn't in marker array that's visible, uncheck box
+      }
+    }
+  }
+//****make only most recently selected cuisine bounce 
+
+  for (var i=0; i<markerarray.length; i++) {
+    //if (markerarray[i].foodtype == category || markerarray[i].city == category) {
+    if (markerarray[i].rating == 10) {
+      //markerarray[i].setVisible(true);
+      //make markers of selected category bounce for 2.5 seconds
+      markerarray[i].setAnimation(google.maps.Animation.BOUNCE);
+      stopAnimation(markerarray[i]);    
+    }
+  }
+  // == check the checkbox ==
+  //document.getElementById(cuisines[i]).checked = true;
+}
+
+//make markers bounce for 2.5 seconds 
+function stopAnimation(marker) {
+    setTimeout(function () {
+        marker.setAnimation(null);
+    }, 2500);
+}
+
+//check if value is in array
+function isInArray(value, array) {
+  return array.indexOf(value) > -1;
+}
+
+// == hides all markers of a particular category, and ensures the checkbox is cleared ==
+function hide(category) {
+  //alert("count is"+markerarray.length);
+
+  var cuisines_of_unchecked_city = [];// unchecked city's cuisines 
+
+  for (var i=0; i<markerarray.length; i++) {      
+    //unchecked cuisine, uncheck box and hide all markers of that cuisine
+    if (markerarray[i].foodtype == category)
+    {
+      document.getElementById(markerarray[i].foodtype).checked = false;
+      document.getElementById(markerarray[i].ratingrange).checked = false;
+      document.getElementById(markerarray[i].city).checked = false;
+      markerarray[i].setVisible(false);
+    }
+    if (markerarray[i].city == category)
+    {
+      document.getElementById(markerarray[i].foodtype).checked = false;
+      //get list of cuisines that were in the city we just unchecked
+      cuisines_of_unchecked_city.push(markerarray[i].foodtype); 
+      markerarray[i].setVisible(false);
+      //recheck everything of all checked cities
+    }
+  }
+  cuisines_of_unchecked_city = cuisines_of_unchecked_city.unique();
+  var intersect_checked_cuisines = [];
+  for (var i=0; i<cuisines_of_unchecked_city.length; i++){
+    for (var j=0; j<checked_cuisines.length; j++){
+      if (cuisines_of_unchecked_city[i] == checked_cuisines[j]){
+        intersect_checked_cuisines.push(checked_cuisines[j])
+      }
+    }
+  }
+  //if unchecked a city, recheck the boxes we just unchecked (as opposed to checking everything)
+  if(isInArray(category,cities)){  //only execute if we unchecked a city 
+    for (var k=0; k<checked_cities.length; k++)
+    {
+      for (var i=0; i<markerarray.length; i++) {      
+        for (var j=0; j<intersect_checked_cuisines.length; j++){
+        //check only the cuisines found in the selected cities (and not just unchecked)
+          if ((markerarray[i].city == checked_cities[k]) && markerarray[i].city != category)
+          { 
+            if (markerarray[i].foodtype == intersect_checked_cuisines[j]){
+              document.getElementById(markerarray[i].foodtype).checked = true;
+            }
+          }
+        }  
+      }
+    }
+  }
+
+  if (activeInfoWindow){
+    activeInfoWindow.close();  
+  }
+}
+
+// == a checkbox has been clicked ==
+function boxclick() {
+  //use category.value if don't pass parameter for var with quotes, if pass with quotes, use 
+  //get_checked_boxes();
+
+  for (var i=0; i<markerarray.length; i++) {      
+      markerarray[i].setVisible(false);
+    }  //hide all markers but unselect all checkboxes
+   //uncheck all checkboxes
+  infowindow.close();
+  document.getElementById("side_bar").style.display = 'none'; 
+
+  [cities_checked, cuisines_checked, ratings_checked] = get_checked_boxes();
+  show(cities_checked,cuisines_checked, ratings_checked);
+
+//   for (var i=0; i<cities_checked.length; i++) { 
+//     show(cities_checked[i]);
+//   }
+// for (var i=0; i<cuisines_checked.length; i++) { 
+//     show(cuisines_checked[i]);
+//   }
+
+    // == rebuild the side bar
+    makeSidebar();
+  
+}
+
+function myclick(name) {
+  var PanToMarker = [];
+  var bounds = new google.maps.LatLngBounds();
+
+  for (var i=0; i<markerarray.length; i++) {
+    if (markerarray[i].myname == name) {
+      PanToMarker.push(markerarray[i]);
+      //reset map to fit all markers on screen
+      bounds.extend(markerarray[i].position);
+      map.fitBounds(bounds);
+      //make markers of selected category bounce for 2.5 seconds
+      markerarray[i].setAnimation(google.maps.Animation.BOUNCE);
+      stopAnimation(markerarray[i]);    
+    }
+  }
+  google.maps.event.trigger(PanToMarker[0],"click");
+
+}
+
+function makeSidebar() {
+  var html = "";
+  restaurantsbytype = [];
+  uniquerestaurants = [];
+  var ratingindex;
+
+//document.getElementById(cities[i]).checked = true;
+  //for all markers clicked, get the restaurant name and make it a unique array
+  for (var i=0; i<markerarray.length; i++) {
+    if (markerarray[i].getVisible()) {
+      restaurantsbytype.push(markerarray[i].myname);
+    }
+  }
+  uniquerestaurants = restaurantsbytype.unique();
+  uniquerestaurants.sort();
+  //for unique list of restaurant names, create href and get its rating
+  for (var i=0; i<uniquerestaurants.length; i++) {
+    ratingindex = restaurantlist.indexOf(uniquerestaurants[i]);
+    html += '<a href="javascript:myclick(' + "'" + uniquerestaurants[i] + "'" + ');">' + uniquerestaurants[i] + ' ('+ ratingslist[ratingindex] + ')'+ '</a><br>';
+  }
+  document.getElementById("side_bar").innerHTML = html ;
+}
+
+  //google.maps.event.trigger(markerarray[i],"click");
+  //make the selected restaurants bounce 
+  //markerarray[i].setAnimation(google.maps.Animation.BOUNCE);
+  //stopAnimation(markerarray[i]); 
+
+function attachSecretMessage(marker, secretMessage) {
+  infowindow = new google.maps.InfoWindow({
+    //content: secretMessage,
+    maxWidth: 200,
+  });
+
+// add listener on InfoWindow for click event
+  google.maps.event.addListener(marker,'click', function() {
+    infowindow.setContent(secretMessage);
+//Close active window if exists - [one might expect this to be default behaviour no?] 
+    if(activeInfoWindow != null) activeInfoWindow.close();
+    infowindow.open(marker.get('map'), this);  // Open InfoWindow - on click 
+    activeInfoWindow = infowindow; // Store new open InfoWindow in global variable
+  });
+  //close info window when you click on map 
+  google.maps.event.addListener(map, "click", function() {
+    if(infowindow) {
+      infowindow.close(map,marker);
+    }});
+}
+
+//make markers bounce
+function toggleBounce() {
+  if (marker.getAnimation() !== null) {
+    marker.setAnimation(null);
+  } else {
+    marker.setAnimation(google.maps.Animation.BOUNCE);
+  }
+}
+
+//function creates a checkbox in the key for every cuisine type 
+function make_checkbox(listname, section){    
+  for (i = 0; i < listname.length; i++) { 
+
+    var x = document.createElement("INPUT");
+      x.setAttribute("type", "checkbox");
+      //x.setAttribute("onclick", 'boxclick(this,' + cuisines[i]+');');
+      x.name = listname;
+      x.value = listname[i];
+      x.id = listname[i];
+      //x.addEventListener("change", myScript);
+
+      //x.setAttribute("onclick", 'boxclick(this,' + document.getElementById(cuisines[i]).value+');');
+      //alert('boxclick(this,' + "'" + cuisines[i]+"'"+');');
+      //x.setAttribute("onclick", 'boxclick(this,' + "'" + listname[i]+"'"+');');
+      x.checked = "checked";
+      document.body.appendChild(x);
+    
+    //labels for checkbox 
+    var label = document.createElement('label')
+      label.htmlFor = listname[i] + '<br>';
+      label.appendChild(document.createTextNode(listname[i]));
+    
+    linebreak = document.createElement("br");
+  //key is the portion of the html to which we add the checkbox 
+    section.appendChild(linebreak);
+    section.appendChild(x);
+    section.appendChild(label);
+    }
+}
+
+
+// Sets the map on all markers in the array.
+function setMapOnAll(map) {
+  for (var i = 0; i < markerarray.length; i++) {
+    markerarray[i].setMap(map);
+  }
+}
+
+// Hides all markers from the map, but keeps them in the array.
+function clearMarkers() {
+  for (var i=0; i<markerarray.length; i++) {      
+      markerarray[i].setVisible(false);
+    }  //hide all markers but unselect all checkboxes
+   //uncheck all checkboxes
+  infowindow.close();
+  document.getElementById("side_bar").style.display = 'none'; 
+  
+  //clear checkboxes 
+  for (var i = 0; i < cuisines.length; i++) {
+    document.getElementById(cuisines[i]).checked = false; 
+  } 
+  for (var i = 0; i < cities.length; i++) {
+    document.getElementById(cities[i]).checked = false;
+  }
+   for (var i = 0; i < ratings.length; i++) {
+    document.getElementById(ratings[i]).checked = false;
+  }
+  checked_cities = [];  //nothing is checked
+  checked_cuisines = [];
+  checked_ratings = [];
+} 
+
+// Shows all markers 
+function showMarkers() {
+  //setMapOnAll(map);
+  for (var i=0; i<markerarray.length; i++) {      
+      markerarray[i].setVisible(true);
+    } 
+  for (var i = 0; i < cuisines.length; i++) {
+    document.getElementById(cuisines[i]).checked = true;
+  }
+  for (var i = 0; i < cities.length; i++) {
+    document.getElementById(cities[i]).checked = true;
+  }
+  for (var i = 0; i < ratings.length; i++) {
+    document.getElementById(ratings[i]).checked = true;
+  }
+  checked_cities = cities;  //all cities are checked 
+  checked_cuisines = cuisines;
+  checked_ratings = ratings;
+}
+initialize();
+alert("thank you, come again.  *apu voice*")
+    </script>
+
+  </head>
+  <body onload = "javascript:make_checkbox(cuisines,cuisinefilter);make_checkbox(cities,city_filter);make_checkbox(ratings,rating_filter)">
+
+        <input id="pac-input" class="controls" type="text" placeholder="Search Box">
+
+    <div id="map-canvas"></div>
+  <div id="rating_filter">
+    <th>Year Filter</th>
+      <div id="filter_buttons">
+      <input onclick="clearMarkers();" type=button value="Hide All" style="margin: 0 ;">
+      <input onclick="showMarkers();" type=button value="Show All" style="margin: 0 ;">
+      <input onclick="boxclick();" type=button value="Filter" style="margin: 0 ;">
+    </div>
+  </div> 
+  <div id="city_filter">  
+    <th>Locations</th>
+  </div>
+  <div id="cuisinefilter">  
+    <th>Place Types</th>
+  </div>
+  <div id="side_bar">  
+  </div>
+    
+    <script type="text/javascript" charset="utf-8"
+src="https://maps.googleapis.com/maps/api/js?key=AIzaSyC_-WSp1Z8_1G4bEybvRgo4VxWWKDAjFZI  
+&signed_in=true&libraries=places&callback=initialize" async defer></script>
+  </body>
+</html>
